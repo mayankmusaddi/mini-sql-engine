@@ -250,6 +250,32 @@ class Query:
         self.output = group_table
         self.output_names = group_names
 
+    def process_aggregates(self):
+        columns = self.tokens['columns']
+        columns = columns.tokens
+        columns = [x for x in columns if str(x)!=' ' and str(x)!=',']
+
+        functions = []
+        for column in columns:
+            if type(column) == sqlparse.sql.Function:
+                functions.append(column)
+        
+        if len(functions) == 0:
+            return
+        if len(functions) != len(columns):
+            print("CANNOT SELECT AGGREGATE AND COLUMN TOGETHER")
+            exit(0)
+
+        result = self.aggregate(self.output, functions)
+        col_names = []
+        for function in functions:
+            func_name = str(function[0]).upper()
+            func_para = str(function[1])
+            col_names.append( func_name+func_para)
+
+        self.output = result
+        self.output_names = col_names
+
     def run(self):
         self.join_tables()
 
@@ -262,13 +288,19 @@ class Query:
             self.process_group()
 
         # process aggregates
-        
-        # process order by
-        # filter columns
+        if 'group' not in self.tokens:
+            self.process_aggregates()
 
-        # process distinct
+        # # process order by
+        # if 'order' in self.tokens:
+        #     self.process_order()
 
+        # # filter columns
+        # self.filter_columns()
 
+        # # process distinct
+        # if self.distinct:
+        #     self.process_distinct
 
 def run(statement, database):
     queries = sqlparse.format(statement, keyword_case = 'upper')
@@ -289,7 +321,7 @@ if __name__ == "__main__":
     # statement = sys.argv[1]
     # run(statement   , database)
     database = Database(DEFAULT_METADATA)
-    statement = "select max(A), sum(C) from table1,table2,table3 group by A"
+    statement = "select max(A), sum(C) from table1,table2,table3"
     print(statement)
     queries = sqlparse.format(statement, keyword_case = 'upper')
     queries = sqlparse.parse(queries)
