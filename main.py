@@ -47,6 +47,12 @@ class Query:
 
         self.parse_query()
     
+    def get_table(self, column):
+        for table in self.database.schema:
+            columns = self.database.schema[table]
+            if column in columns:
+                return table
+
     def parse_query(self):
         tokens = self.query.tokens
         tokens = [token for token in tokens if str(token)!=' ' and str(token)!=';']
@@ -333,6 +339,21 @@ class Query:
         self.output = distinct_table
         # return
     
+    def print_output(self):
+        output_names = []
+        for name in self.output_names:
+            if '(' in name:
+                col = name[name.index('(')+1:-1]
+                table = self.get_table(col)
+                output_name = name[:name.index('(')+1] + table+'.'+col + ')'
+            else:
+                table = self.get_table(name)
+                output_name = table+'.'+name
+            output_names.append(output_name)
+        print(','.join(output_names))
+        for row in self.output:
+            print(','.join(map(str, row)))
+
     def run(self):
         # process from
         self.join_tables()
@@ -365,7 +386,8 @@ def run(statement, database):
     queries = sqlparse.parse(queries)
     for query in queries:
         q = Query(query,database)
-        q.parse_query()
+        q.run()
+        q.print_output()
 
 def test(statement):
     database = Database(DEFAULT_METADATA)
@@ -376,18 +398,6 @@ def test(statement):
     return q
 
 if __name__ == "__main__":
-    # statement = sys.argv[1]
-    # run(statement   , database)
+    statement = sys.argv[1]
     database = Database(DEFAULT_METADATA)
-    statement = "select distinct max(A), sum(A), B from table1,table2,table3 group by B order by B desc"
-    print(statement)
-    queries = sqlparse.format(statement, keyword_case = 'upper')
-    queries = sqlparse.parse(queries)
-    q = Query(queries[0],database)
-    q.run()
-
-    print()
-    print("FINAL::")
-    print(q.output_names)
-    print(q.output)
-    print(len(q.output))
+    run(statement, database)
