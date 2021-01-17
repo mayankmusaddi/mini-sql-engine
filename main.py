@@ -4,7 +4,7 @@ from database import Database
 
 DEFAULT_METADATA = "metadata.txt"
 
-def evaluate(n1, n2, op):
+def evaluate_exp(n1, n2, op):
     options = {
         '='  : n1 == n2,
         '>=' : n1 >= n2,
@@ -20,7 +20,7 @@ def evaluate(n1, n2, op):
 
     return options[op]
 
-def evaluate(name, column):
+def evaluate_aggr(name, column):
     options = {
         'max'  : max(column),
         'min'  : min(column),
@@ -118,7 +118,16 @@ class Query:
             exit(0)
 
     def join_tables(self):
-        table_names = str(self.tokens['tables']).split(',')
+        # table_names = str(self.tokens['tables']).split(',')
+        table_tokens = self.tokens['tables']
+
+        if type(table_tokens) != sqlparse.sql.IdentifierList and type(table_tokens) != sqlparse.sql.Identifier:
+            print("INVALID SELECTION CRITERIA")
+            exit(0)
+        
+        table_tokens = table_tokens.tokens
+        table_tokens = [table_token for table_token in table_tokens if str(table_token) != ' ' and str(table_token) != ',']
+        table_names = [str(token) for token in table_tokens]
 
         # Error Handling
         if len(table_names) != len(set(table_names)):
@@ -144,6 +153,11 @@ class Query:
         self.output_names = col_names
 
     def satisfies(self, row, condition):
+
+        if type(condition) != sqlparse.sql.Comparison:
+            print("INVALID CONDITION TYPE")
+            exit(0)
+
         condition = condition.tokens
         condition = [c for c in condition if str(c)!=' ']
 
@@ -172,11 +186,15 @@ class Query:
                 exit(0)
             n2 = row[self.output_names.index(c2)]
 
-        return evaluate(n1,n2,op)
+        return evaluate_exp(n1,n2,op)
 
     def process_where(self):
+
+        if len(self.output) == 0 or len(self.output[0]) == 0:
+            return
+
         conditions = self.tokens['where']
-        conditions = [condition for condition in conditions if str(condition)!=' ' and str(condition)!='WHERE']
+        conditions = [condition for condition in conditions if str(condition)!=' ' and str(condition)!='WHERE' and str(condition)!=';']
 
         # Error Handling
         if len(conditions) != 1 and len(conditions) != 3:
@@ -198,6 +216,10 @@ class Query:
         self.output = where_table
 
     def aggregate(self, table, functions):
+
+        if len(table) == 0 or len(table[0]) == 0:
+            return []
+
         result = []
         for function in functions:
 
@@ -215,11 +237,12 @@ class Query:
             aggr_ind = self.output_names.index(aggr_name)
             aggr_col = [row[aggr_ind] for row in table]
 
-            aggr = evaluate(func_name, aggr_col)
+            aggr = evaluate_aggr(func_name, aggr_col)
             result.append(aggr)
         return result
 
     def process_group(self):
+
         group_name = str(self.tokens['group'])
         columns = self.tokens['columns']
 
@@ -227,7 +250,15 @@ class Query:
             print("INVALID GROUP BY COLUMN NAME")
             exit(0)
 
-        columns = columns.tokens
+        if type(columns) != sqlparse.sql.IdentifierList and type(columns) != sqlparse.sql.Identifier and type(columns) != sqlparse.sql.Function:
+            print("INVALID SELECTION CRITERIA FOR GROUP BY")
+            exit(0)
+
+        if type(columns) == sqlparse.sql.Function:
+            columns = [columns]
+        else:
+            columns = columns.tokens
+
         columns = [x for x in columns if str(x)!=' ' and str(x)!=',']
         functions = []
         for column in columns:
@@ -257,8 +288,20 @@ class Query:
         self.output_names = group_names
 
     def process_aggregates(self):
+
         columns = self.tokens['columns']
-        columns = columns.tokens
+
+        if str(columns) == '*':
+            return
+        if type(columns) != sqlparse.sql.IdentifierList and type(columns) != sqlparse.sql.Identifier and type(columns) != sqlparse.sql.Function:
+            print("INVALID SELECTION CRITERIA")
+            exit(0)
+
+        if type(columns) == sqlparse.sql.Function:
+            columns = [columns]
+        else:
+            columns = columns.tokens
+
         columns = [x for x in columns if str(x)!=' ' and str(x)!=',']
 
         functions = []
@@ -283,7 +326,14 @@ class Query:
         self.output_names = aggr_names
 
     def process_order(self):
+
+        if len(self.output) == 0 or len(self.output[0]) == 0:
+            return
+
         order = self.tokens['order']
+        if type(order) != sqlparse.sql.Identifier:
+            print("INVALID ORDER BY ARGUMENTS")
+            exit(0)
         order = order.tokens
         order = [x for x in order if str(x)!=' ' and str(x)!=',']
         
@@ -306,8 +356,20 @@ class Query:
         self.output.sort(key = lambda x:x[order_index], reverse = sort_order)
 
     def filter_columns(self):
+
         columns = self.tokens['columns']
-        columns = columns.tokens
+
+        if str(columns) == '*':
+            return
+        if type(columns) != sqlparse.sql.IdentifierList and type(columns) != sqlparse.sql.Identifier and type(columns) != sqlparse.sql.Function:
+            print("INVALID SELECTION CRITERIA")
+            exit(0)
+
+        if type(columns) == sqlparse.sql.Function:
+            columns = [columns]
+        else:
+            columns = columns.tokens
+
         columns = [x for x in columns if str(x)!=' ' and str(x)!=',']
 
         filtered_table = []
@@ -324,7 +386,9 @@ class Query:
 
             filtered_names.append(col)
             col_index = self.output_names.index(col)
-            filtered_table.append([row[col_index] for row in self.output])
+
+            if len(self.output) != 0 and len(self.output[0]) != 0:
+                filtered_table.append([row[col_index] for row in self.output])
         
         self.output = list(map(list, zip(*filtered_table)))
         self.output_names = filtered_names
@@ -385,6 +449,9 @@ def run(statement, database):
     queries = sqlparse.format(statement, keyword_case = 'upper')
     queries = sqlparse.parse(queries)
     for query in queries:
+        if str(query)[-1] != ';':
+            print("QUERIES SHOULD END WITH SEMICOLON")
+            exit(0)
         q = Query(query,database)
         q.run()
         q.print_output()
@@ -394,7 +461,7 @@ def test(statement):
     queries = sqlparse.format(statement, keyword_case = 'upper')
     queries = sqlparse.parse(queries)
     q = Query(queries[0],database)
-    q.run()
+    # q.run()   
     return q
 
 if __name__ == "__main__":
