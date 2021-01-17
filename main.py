@@ -22,11 +22,11 @@ def evaluate(n1, n2, op):
 
 def evaluate(name, column):
     options = {
-        'MAX'  : max(column),
-        'MIN'  : min(column),
-        'SUM'  : sum(column),
-        'COUNT': len(column),
-        'AVG'  : sum(column)/len(column),
+        'max'  : max(column),
+        'min'  : min(column),
+        'sum'  : sum(column),
+        'count': len(column),
+        'avg'  : sum(column)/len(column),
     }
 
     # Error handling
@@ -199,7 +199,7 @@ class Query:
                 print("INVALID AGGREGATE FUNCTION")
                 exit(0)
 
-            func_name = str(function[0]).upper()
+            func_name = str(function[0]).lower()
             aggr_name = str(function[1][1])
 
             if aggr_name not in self.output_names:
@@ -243,7 +243,7 @@ class Query:
 
         group_names = [group_name]
         for function in functions:
-            func_name = str(function[0]).upper()
+            func_name = str(function[0]).lower()
             func_para = str(function[1])
             group_names.append( func_name+func_para)
 
@@ -266,17 +266,75 @@ class Query:
             print("CANNOT SELECT AGGREGATE AND COLUMN TOGETHER")
             exit(0)
 
-        result = self.aggregate(self.output, functions)
-        col_names = []
+        aggr_table = [self.aggregate(self.output, functions)]
+        aggr_names = []
         for function in functions:
-            func_name = str(function[0]).upper()
+            func_name = str(function[0]).lower()
             func_para = str(function[1])
-            col_names.append( func_name+func_para)
+            aggr_names.append( func_name+func_para)
 
-        self.output = result
-        self.output_names = col_names
+        self.output = aggr_table
+        self.output_names = aggr_names
 
+    def process_order(self):
+        order = self.tokens['order']
+        order = order.tokens
+        order = [x for x in order if str(x)!=' ' and str(x)!=',']
+        
+        # Error Handling
+        if len(order) > 2 or len(order) == 0:
+            print("INVALID ORDER BY ARGUMENTS")
+            exit(0)
+
+        order_name = str(order[0])
+        order_type = 'ASC'
+        if len(order) == 2:
+            order_type = str(order[1])
+
+        if order_name not in self.output_names or (order_type != 'ASC' and order_type != 'DESC'):
+            print("INVLAID ORDER BY ARGUMENTS")
+            exit(0)
+
+        sort_order = False if order_type == 'ASC' else True
+        order_index = self.output_names.index(order_name)
+        self.output.sort(key = lambda x:x[order_index], reverse = sort_order)
+
+    def filter_columns(self):
+        columns = self.tokens['columns']
+        columns = columns.tokens
+        columns = [x for x in columns if str(x)!=' ' and str(x)!=',']
+
+        filtered_table = []
+        filtered_names = []
+        for column in columns:
+            if type(column) == sqlparse.sql.Function:
+                col = (str(column[0]).lower() + str(column[1]))
+            else:
+                col = str(column)
+            
+            if col not in self.output_names:
+                print("INVALID SELECT COLUMN ENTRY")
+                exit(0)
+
+            filtered_names.append(col)
+            col_index = self.output_names.index(col)
+            filtered_table.append([row[col_index] for row in self.output])
+        
+        self.output = list(map(list, zip(*filtered_table)))
+        self.output_names = filtered_names
+  
+    def process_distinct(self):
+        distinct_table = []
+        is_unique = {}
+        for row in self.output:
+            if tuple(row) not in is_unique:
+                is_unique[tuple(row)] = True
+                distinct_table.append(row)
+        self.output = distinct_table
+        # return
+    
     def run(self):
+        # process from
         self.join_tables()
 
         # process where
@@ -291,16 +349,16 @@ class Query:
         if 'group' not in self.tokens:
             self.process_aggregates()
 
-        # # process order by
-        # if 'order' in self.tokens:
-        #     self.process_order()
+        # process order by
+        if 'order' in self.tokens:
+            self.process_order()
 
-        # # filter columns
-        # self.filter_columns()
+        # filter columns
+        self.filter_columns()
 
-        # # process distinct
-        # if self.distinct:
-        #     self.process_distinct
+        # process distinct
+        if self.distinct:
+            self.process_distinct()
 
 def run(statement, database):
     queries = sqlparse.format(statement, keyword_case = 'upper')
@@ -321,13 +379,15 @@ if __name__ == "__main__":
     # statement = sys.argv[1]
     # run(statement   , database)
     database = Database(DEFAULT_METADATA)
-    statement = "select max(A), sum(C) from table1,table2,table3"
+    statement = "select distinct max(A), sum(A), B from table1,table2,table3 group by B order by B desc"
     print(statement)
     queries = sqlparse.format(statement, keyword_case = 'upper')
     queries = sqlparse.parse(queries)
     q = Query(queries[0],database)
     q.run()
 
+    print()
+    print("FINAL::")
     print(q.output_names)
     print(q.output)
     print(len(q.output))
