@@ -1,8 +1,7 @@
-
 1. Select * from table2;
 
-output: 
-table1.D,table2.E
+Output: 
+table2.B,table2.D
 158,11191
 773,14421
 85,5117
@@ -29,3 +28,9 @@ table1.A
 411
 -900
 858
+
+3. Select max(A) from table1;
+
+Output:
+max(table1.A)
+922

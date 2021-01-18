@@ -6,11 +6,10 @@ C
 <end_table>
 <begin_table>
 table2
-B2
-D2
+D
+E
 <end_table>
 <begin_table>
 table3
-B3
-D3
+F
 <end_table>
